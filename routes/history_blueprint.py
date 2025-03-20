@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+import requests
 from models import db   # Use the shared db instance
 from models.history import History
 from datetime import datetime
@@ -7,6 +8,8 @@ from decorator import authenticate_user
 
 history_bp = Blueprint("history_bp", __name__)
 
+POST_SERVICE_URL = "http://127.0.0.1:5009/posts"
+
 # add a new histroy (user visit the post in the frontent)
 @history_bp.route("/", methods=["POST"], strict_slashes=False)
 @authenticate_user()
@@ -14,7 +17,7 @@ def add_history_entry(user_id, user_verified, user_role):
     data = request.get_json()
     
     if not data or "postId" not in data:
-        return jsonify({"error": "Invalid request, postId required"}), 400  # 这里修正了状态码
+        return jsonify({"error": "Invalid request, postId required"}), 400  
 
     try:
         new_history = History(
@@ -33,7 +36,7 @@ def add_history_entry(user_id, user_verified, user_role):
         return jsonify({"error": f"Failed to add history entry: {str(e)}"}), 500
 
 # get post history of current user
-@history_bp.route("/", methods=["GET"])
+@history_bp.route("/", methods=["GET"], strict_slashes=False)
 @authenticate_user()
 def get_user_history(user_id, user_verified, user_role):
     history_entries = History.query.filter_by(userId=user_id).order_by(History.viewDate.desc()).all()
@@ -43,12 +46,24 @@ def get_user_history(user_id, user_verified, user_role):
     
     history_list = []
     for entry in history_entries:
+        headers = {"Authorization": request.headers.get("Authorization")}
+        post_response = requests.get(f"{POST_SERVICE_URL}/{entry.postId}", headers=headers)
+
+        if post_response.status_code == 200:
+            post_data = post_response.json().get("post", {})
+        else:
+            post_data = {"id": entry.postId, "title": "Post not found", "content": ""}
+
+        print("History Entry:", post_data)
+
         history_list.append({
             "historyId": entry.historyId,
-            "userId": entry.userId,
             "postId": entry.postId,
+            "title": post_data.get("title", "Untitled"),
+            "content": post_data.get("content", ""),
             "viewDate": entry.viewDate.strftime("%Y-%m-%d %H:%M:%S")
         })
+
     return jsonify({"history": history_list}), 200
 
 # clear spedific record
