@@ -15,25 +15,31 @@ POST_SERVICE_URL = "http://127.0.0.1:5009/posts"
 @authenticate_user()
 def add_history_entry(user_id, user_verified, user_role):
     data = request.get_json()
-    
+
     if not data or "postId" not in data:
-        return jsonify({"error": "Invalid request, postId required"}), 400  
+        return jsonify({"error": "Invalid request, postId required"}), 400
 
     try:
-        new_history = History(
-            userId=user_id,  # get userId from token 
-            postId=data["postId"],
-            viewDate=datetime.now()  # get current time
-        )
+        existing_history = History.query.filter_by(userId=user_id, postId=data["postId"]).first()
 
-        db.session.add(new_history)
+        if existing_history:
+            # If the entry exists, update the view time
+            existing_history.viewDate = datetime.now()
+        else:
+            # Create a new history entry
+            new_history = History(
+                userId=user_id,
+                postId=data["postId"],
+                viewDate=datetime.now()
+            )
+            db.session.add(new_history)
+
         db.session.commit()
-
-        return jsonify({"message": "History entry added successfully"}), 201
+        return jsonify({"message": "History entry updated successfully"}), 200
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": f"Failed to add history entry: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to update history entry: {str(e)}"}), 500
 
 # get post history of current user
 @history_bp.route("/", methods=["GET"], strict_slashes=False)
